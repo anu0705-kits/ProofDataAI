@@ -1,19 +1,21 @@
 import streamlit as st
 import pandas as pd
+import re
+import hashlib
+from datetime import datetime
 
 from modules.data_profiler import profile_dataframe
 from modules.question_parser import parse_question
 from modules.code_executor import calculate
 from modules.data_quality import check_data_quality, get_quality_status
 from modules.currency_checker import check_currency_mismatch, currency_warning
-from modules.ambiguity_detector import detect_question_ambiguity, is_ambiguous
 from modules.verifier import verify_result
 from modules.proof_certificate import create_certificate
 
 
-# =========================================================
-# PAGE CONFIGURATION
-# =========================================================
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
     page_title="ProofDataAI",
@@ -23,16 +25,12 @@ st.set_page_config(
 )
 
 
-# =========================================================
-# DARK THEME + UI DESIGN
-# =========================================================
+# ============================================================
+# CSS
+# ============================================================
 
 st.markdown("""
 <style>
-
-/* ==============================
-   MAIN BACKGROUND
-   ============================== */
 
 .stApp {
     background-color: #000000;
@@ -46,48 +44,22 @@ st.markdown("""
     padding-bottom: 3rem;
 }
 
-
-/* ==============================
-   GLOBAL TEXT
-   ============================== */
-
-html,
-body,
-p,
-div,
-span,
-label,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+html, body, p, div, span, label,
+h1, h2, h3, h4, h5, h6 {
     color: #ffffff;
 }
-
-
-/* ==============================
-   MAIN TITLE
-   ============================== */
 
 .main-title {
     font-size: 42px;
     font-weight: 800;
     color: #ffffff !important;
-    margin-bottom: 5px;
 }
 
 .subtitle {
     font-size: 17px;
-    color: #b5b5b5 !important;
+    color: #aaaaaa !important;
     margin-bottom: 30px;
 }
-
-
-/* ==============================
-   SECTION TITLE
-   ============================== */
 
 .section-title {
     font-size: 25px;
@@ -97,10 +69,7 @@ h6 {
     margin-bottom: 15px;
 }
 
-
-/* ==============================
-   SIDEBAR
-   ============================== */
+/* SIDEBAR */
 
 section[data-testid="stSidebar"] {
     background-color: #090909;
@@ -114,7 +83,6 @@ section[data-testid="stSidebar"] * {
 .sidebar-brand {
     font-size: 25px;
     font-weight: 800;
-    color: #ffffff !important;
 }
 
 .sidebar-subtitle {
@@ -123,43 +91,13 @@ section[data-testid="stSidebar"] * {
     margin-bottom: 20px;
 }
 
-
-/* ==============================
-   SIDEBAR NAVIGATION
-   ============================== */
-
-section[data-testid="stSidebar"]
-div[role="radiogroup"] {
-    gap: 8px;
-}
-
-section[data-testid="stSidebar"]
-div[role="radiogroup"] label {
-    background-color: #151515;
-    border: 1px solid #292929;
-    border-radius: 9px;
-    padding: 10px 12px;
-    color: #ffffff !important;
-    font-size: 15px;
-}
-
-section[data-testid="stSidebar"]
-div[role="radiogroup"] label:hover {
-    background-color: #252525;
-    border-color: #555555;
-}
-
-
-/* ==============================
-   METRIC CARDS
-   ============================== */
+/* CARDS */
 
 .metric-card {
     background-color: #111111;
     padding: 22px;
     border-radius: 14px;
     border: 1px solid #303030;
-    box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
     min-height: 105px;
 }
 
@@ -176,27 +114,14 @@ div[role="radiogroup"] label:hover {
     color: #ffffff !important;
 }
 
-
-/* ==============================
-   INFORMATION CARDS
-   ============================== */
-
 .info-card {
     background-color: #111111;
     padding: 22px;
     border-radius: 14px;
     border: 1px solid #303030;
-    box-shadow: 0px 4px 15px rgba(0,0,0,0.4);
 }
 
-.info-card h3 {
-    color: #ffffff !important;
-}
-
-
-/* ==============================
-   VERIFIED CARD
-   ============================== */
+/* VERIFIED */
 
 .verified-card {
     background-color: #071a0d;
@@ -211,10 +136,7 @@ div[role="radiogroup"] label:hover {
     color: #4ade80 !important;
 }
 
-
-/* ==============================
-   REFUSED CARD
-   ============================== */
+/* REFUSED */
 
 .refused-card {
     background-color: #1c080b;
@@ -229,10 +151,7 @@ div[role="radiogroup"] label:hover {
     color: #f87171 !important;
 }
 
-
-/* ==============================
-   BUTTON
-   ============================== */
+/* BUTTON */
 
 .stButton > button {
     width: 100%;
@@ -247,13 +166,9 @@ div[role="radiogroup"] label:hover {
 
 .stButton > button:hover {
     background-color: #dddddd;
-    color: #000000 !important;
 }
 
-
-/* ==============================
-   TEXT INPUT
-   ============================== */
+/* INPUT */
 
 div[data-baseweb="input"] {
     background-color: #111111;
@@ -264,21 +179,9 @@ div[data-baseweb="input"] {
 div[data-baseweb="input"] input {
     background-color: #111111 !important;
     color: #ffffff !important;
-    font-size: 16px;
 }
 
-div[data-baseweb="input"] input::placeholder {
-    color: #888888 !important;
-}
-
-
-/* ==============================
-   SELECT BOX
-   ============================== */
-
-div[data-baseweb="select"] {
-    background-color: #111111;
-}
+/* SELECT */
 
 div[data-baseweb="select"] > div {
     background-color: #111111 !important;
@@ -286,14 +189,7 @@ div[data-baseweb="select"] > div {
     border-color: #444444 !important;
 }
 
-div[data-baseweb="select"] span {
-    color: #ffffff !important;
-}
-
-
-/* ==============================
-   FILE UPLOADER
-   ============================== */
+/* FILE */
 
 [data-testid="stFileUploader"] {
     background-color: #111111;
@@ -302,35 +198,14 @@ div[data-baseweb="select"] span {
     padding: 10px;
 }
 
-[data-testid="stFileUploader"] * {
-    color: #ffffff !important;
-}
-
-
-/* ==============================
-   DATAFRAME
-   ============================== */
+/* TABLE */
 
 [data-testid="stDataFrame"] {
     border: 1px solid #333333;
     border-radius: 10px;
 }
 
-
-/* ==============================
-   EXPANDER
-   ============================== */
-
-[data-testid="stExpander"] {
-    background-color: #111111;
-    border: 1px solid #333333;
-    border-radius: 10px;
-}
-
-
-/* ==============================
-   CODE BLOCK
-   ============================== */
+/* CODE */
 
 pre {
     background-color: #0b0b0b !important;
@@ -338,30 +213,7 @@ pre {
     border-radius: 10px;
 }
 
-
-/* ==============================
-   STREAMLIT METRICS
-   ============================== */
-
-[data-testid="stMetric"] {
-    background-color: #111111;
-    border: 1px solid #333333;
-    border-radius: 10px;
-    padding: 12px;
-}
-
-[data-testid="stMetricLabel"] {
-    color: #aaaaaa !important;
-}
-
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-}
-
-
-/* ==============================
-   FOOTER
-   ============================== */
+/* FOOTER */
 
 .footer {
     text-align: center;
@@ -374,42 +226,49 @@ pre {
 """, unsafe_allow_html=True)
 
 
-# =========================================================
+# ============================================================
 # SESSION STATE
-# =========================================================
+# ============================================================
 
-if "df" not in st.session_state:
-    st.session_state.df = None
+defaults = {
+    "df": None,
+    "file_name": None,
+    "last_result": None,
+    "certificate": None,
+    "proof_code": None,
+    "verification": None,
+    "last_question": None,
+    "refusal_reason": None
+}
 
-if "file_name" not in st.session_state:
-    st.session_state.file_name = None
+for key, value in defaults.items():
 
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
-
-if "certificate" not in st.session_state:
-    st.session_state.certificate = None
-
-if "proof_code" not in st.session_state:
-    st.session_state.proof_code = None
-
-if "verification" not in st.session_state:
-    st.session_state.verification = None
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
-# =========================================================
-# LOAD DATASET FUNCTION
-# =========================================================
+# ============================================================
+# FILE READER
+# ============================================================
+
+def read_file(uploaded_file):
+
+    if uploaded_file.name.lower().endswith(".csv"):
+
+        return pd.read_csv(uploaded_file)
+
+    return pd.read_excel(uploaded_file)
+
+
+# ============================================================
+# LOAD SINGLE DATASET
+# ============================================================
 
 def load_dataset(uploaded_file):
 
     try:
 
-        if uploaded_file.name.endswith(".csv"):
-            dataframe = pd.read_csv(uploaded_file)
-
-        else:
-            dataframe = pd.read_excel(uploaded_file)
+        dataframe = read_file(uploaded_file)
 
         st.session_state.df = dataframe
         st.session_state.file_name = uploaded_file.name
@@ -419,20 +278,416 @@ def load_dataset(uploaded_file):
     except Exception as e:
 
         st.error(
-            f"Unable to read the file: {e}"
+            "Unable to read file: " + str(e)
         )
 
         return False
 
 
-# =========================================================
+# ============================================================
+# FIND CURRENCY COLUMN
+# ============================================================
+
+def find_currency_column(df):
+
+    possible = [
+        "currency",
+        "currencies",
+        "currency_code"
+    ]
+
+    for column in df.columns:
+
+        if column.lower() in possible:
+
+            return column
+
+    return None
+
+
+# ============================================================
+# FIND UNIT COLUMN
+# ============================================================
+
+def find_unit_columns(df):
+
+    possible = [
+        "unit",
+        "units",
+        "uom",
+        "unit_type",
+        "measurement_unit"
+    ]
+
+    result = []
+
+    for column in df.columns:
+
+        if column.lower() in possible:
+
+            result.append(column)
+
+    return result
+
+
+# ============================================================
+# GET CURRENCIES
+# ============================================================
+
+def get_currencies(df):
+
+    currency_column = find_currency_column(df)
+
+    if currency_column is None:
+
+        return []
+
+    values = (
+        df[currency_column]
+        .dropna()
+        .astype(str)
+        .str.upper()
+        .str.strip()
+        .unique()
+    )
+
+    return sorted(values.tolist())
+
+
+# ============================================================
+# GET UNITS
+# ============================================================
+
+def get_units(df):
+
+    unit_columns = find_unit_columns(df)
+
+    units = set()
+
+    for column in unit_columns:
+
+        values = (
+            df[column]
+            .dropna()
+            .astype(str)
+            .str.lower()
+            .str.strip()
+            .unique()
+        )
+
+        for value in values:
+
+            units.add(value)
+
+    return sorted(units)
+
+
+# ============================================================
+# FINANCIAL QUESTION
+# ============================================================
+
+def is_financial_question(question):
+
+    words = [
+        "revenue",
+        "sales",
+        "price",
+        "cost",
+        "profit",
+        "amount",
+        "income",
+        "salary",
+        "expense",
+        "money"
+    ]
+
+    question = question.lower()
+
+    return any(
+        word in question
+        for word in words
+    )
+
+
+# ============================================================
+# DATE AMBIGUITY DETECTOR
+# ============================================================
+
+def detect_ambiguous_dates(question, df):
+
+    warnings = []
+
+    question_lower = question.lower()
+
+    date_words = [
+        "date",
+        "day",
+        "month",
+        "year",
+        "on ",
+        "during"
+    ]
+
+    has_date_question = any(
+        word in question_lower
+        for word in date_words
+    )
+
+    if not has_date_question:
+
+        return warnings
+
+    # Check date-like columns
+    for column in df.columns:
+
+        column_lower = column.lower()
+
+        if (
+            "date" in column_lower
+            or "day" in column_lower
+        ):
+
+            values = (
+                df[column]
+                .dropna()
+                .astype(str)
+                .head(100)
+                .tolist()
+            )
+
+            for value in values:
+
+                if re.match(
+                    r"^\d{1,2}/\d{1,2}/\d{4}$",
+                    value.strip()
+                ):
+
+                    warnings.append(
+                        f"Ambiguous date format detected "
+                        f"in column '{column}'. "
+                        f"Values such as {value} can represent "
+                        f"different dates depending on DD/MM or MM/DD format."
+                    )
+
+                    return warnings
+
+    return warnings
+
+
+# ============================================================
+# DUPLICATE DETECTOR
+# ============================================================
+
+def detect_duplicates(df):
+
+    count = int(
+        df.duplicated().sum()
+    )
+
+    return count
+
+
+# ============================================================
+# MISSING DATA DETECTOR
+# ============================================================
+
+def detect_missing_for_column(df, column):
+
+    if column not in df.columns:
+
+        return 0
+
+    return int(
+        df[column].isna().sum()
+    )
+
+
+# ============================================================
+# FIND REQUESTED CURRENCY FROM QUESTION
+# ============================================================
+
+def find_requested_currency(question, currencies):
+
+    question_lower = question.lower()
+
+    currency_names = {
+
+        "usd": [
+            "usd",
+            "dollar",
+            "dollars",
+            "$"
+        ],
+
+        "eur": [
+            "eur",
+            "euro",
+            "euros",
+            "€"
+        ],
+
+        "inr": [
+            "inr",
+            "rupee",
+            "rupees",
+            "₹"
+        ],
+
+        "gbp": [
+            "gbp",
+            "pound",
+            "pounds",
+            "£"
+        ]
+
+    }
+
+    for currency in currencies:
+
+        currency_lower = currency.lower()
+
+        if currency_lower in question_lower:
+
+            return currency
+
+        if currency_lower in currency_names:
+
+            for keyword in currency_names[currency_lower]:
+
+                if keyword in question_lower:
+
+                    return currency
+
+    return None
+
+
+# ============================================================
+# TRICK QUESTION CHECK
+# ============================================================
+
+def check_trick_question(
+    question,
+    df,
+    selected_currency,
+    column
+):
+
+    warnings = []
+
+    # ----------------------------------------------
+    # Requested currency does not exist
+    # ----------------------------------------------
+
+    currencies = get_currencies(df)
+
+    if selected_currency:
+
+        if selected_currency not in currencies:
+
+            warnings.append(
+                f"The question requests {selected_currency}, "
+                f"but that currency does not exist in the dataset."
+            )
+
+    # ----------------------------------------------
+    # Column does not contain usable data
+    # ----------------------------------------------
+
+    if column not in df.columns:
+
+        warnings.append(
+            f"The requested column '{column}' "
+            f"does not exist."
+        )
+
+    # ----------------------------------------------
+    # No rows
+    # ----------------------------------------------
+
+    if len(df) == 0:
+
+        warnings.append(
+            "The dataset contains no records."
+        )
+
+    return warnings
+
+
+# ============================================================
+# BUILD PROOF CODE
+# ============================================================
+
+def build_proof_code(
+    file_name,
+    column,
+    operation,
+    selected_currency
+):
+
+    code = f'''import pandas as pd
+
+df = pd.read_csv("{file_name}")
+'''
+
+    if selected_currency:
+
+        code += f'''
+df = df[
+    df["currency"]
+    .astype(str)
+    .str.upper()
+    == "{selected_currency}"
+]
+'''
+
+    code += f'''
+values = pd.to_numeric(
+    df["{column}"],
+    errors="coerce"
+).dropna()
+'''
+
+    if operation == "sum":
+
+        code += """
+result = values.sum()
+"""
+
+    elif operation == "average":
+
+        code += """
+result = values.mean()
+"""
+
+    elif operation == "max":
+
+        code += """
+result = values.max()
+"""
+
+    elif operation == "min":
+
+        code += """
+result = values.min()
+"""
+
+    code += """
+print(result)
+"""
+
+    return code
+
+
+# ============================================================
 # SIDEBAR
-# =========================================================
+# ============================================================
 
 with st.sidebar:
 
     st.markdown(
-        '<div class="sidebar-brand">🛡️ ProofDataAI</div>',
+        '<div class="sidebar-brand">'
+        '🛡️ ProofDataAI'
+        '</div>',
         unsafe_allow_html=True
     )
 
@@ -453,6 +708,7 @@ with st.sidebar:
             "📊 Dashboard",
             "📂 Dataset Analysis",
             "🔍 Question Analysis",
+            "⚠️ Contradiction Check",
             "🏆 Proof & Verification"
         ],
         label_visibility="collapsed"
@@ -463,7 +719,7 @@ with st.sidebar:
     st.markdown("### System Status")
 
     st.success("● AI Engine Ready")
-    st.success("● Safety Engine Ready")
+    st.success("● Trap Detector Ready")
     st.success("● Verification Ready")
 
     st.divider()
@@ -473,7 +729,8 @@ with st.sidebar:
         st.markdown("### Current Dataset")
 
         st.write(
-            "📄 " + st.session_state.file_name
+            "📄 "
+            + st.session_state.file_name
         )
 
     else:
@@ -483,27 +740,29 @@ with st.sidebar:
         )
 
 
-# =========================================================
+# ============================================================
 # HEADER
-# =========================================================
+# ============================================================
 
 st.markdown(
-    '<div class="main-title">🛡️ ProofDataAI</div>',
+    '<div class="main-title">'
+    '🛡️ ProofDataAI'
+    '</div>',
     unsafe_allow_html=True
 )
 
 st.markdown(
     '<div class="subtitle">'
     'Proof-Carrying Data Analyst — '
-    'Analyze • Verify • Prove • Refuse'
+    'Analyze • Detect • Verify • Prove • Refuse'
     '</div>',
     unsafe_allow_html=True
 )
 
 
-# =========================================================
+# ============================================================
 # DASHBOARD
-# =========================================================
+# ============================================================
 
 if page == "📊 Dashboard":
 
@@ -514,7 +773,9 @@ if page == "📊 Dashboard":
         unsafe_allow_html=True
     )
 
-    st.markdown("### 📂 Upload Dataset")
+    st.markdown(
+        "### 📂 Upload Dataset"
+    )
 
     uploaded_file = st.file_uploader(
         "Upload CSV or Excel file",
@@ -535,15 +796,10 @@ if page == "📊 Dashboard":
                     "✅ Dataset uploaded successfully!"
                 )
 
-
-    # -----------------------------------------------------
-    # NO DATASET
-    # -----------------------------------------------------
-
     if st.session_state.df is None:
 
         st.info(
-            "Upload a dataset to begin your analysis."
+            "Upload a dataset to begin."
         )
 
         st.markdown("---")
@@ -560,7 +816,7 @@ if page == "📊 Dashboard":
                 """
                 <div class="info-card">
                 <h3>1️⃣ Upload</h3>
-                Upload messy real-world data.
+                Upload real-world data.
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -572,8 +828,7 @@ if page == "📊 Dashboard":
                 """
                 <div class="info-card">
                 <h3>2️⃣ Detect</h3>
-                Detect data quality,
-                ambiguity and mismatches.
+                Detect hidden data traps.
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -585,8 +840,7 @@ if page == "📊 Dashboard":
                 """
                 <div class="info-card">
                 <h3>3️⃣ Calculate</h3>
-                Generate and execute
-                reproducible analysis.
+                Generate reproducible analysis.
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -598,17 +852,11 @@ if page == "📊 Dashboard":
                 """
                 <div class="info-card">
                 <h3>4️⃣ Verify</h3>
-                Independently verify
-                or safely refuse.
+                Verify or safely refuse.
                 </div>
                 """,
                 unsafe_allow_html=True
             )
-
-
-    # -----------------------------------------------------
-    # DATASET EXISTS
-    # -----------------------------------------------------
 
     else:
 
@@ -622,144 +870,90 @@ if page == "📊 Dashboard":
             quality
         )
 
-
         st.markdown(
             f"### 📄 {st.session_state.file_name}"
         )
 
-
-        # METRIC CARDS
-
         c1, c2, c3, c4 = st.columns(4)
 
-        with c1:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                <div class="metric-title">
-                TOTAL ROWS
-                </div>
-                <div class="metric-value">
-                {profile["rows"]}
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with c2:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                <div class="metric-title">
-                COLUMNS
-                </div>
-                <div class="metric-value">
-                {profile["columns"]}
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with c3:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                <div class="metric-title">
-                MISSING VALUES
-                </div>
-                <div class="metric-value">
-                {profile["missing_values"]}
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        with c4:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-                <div class="metric-title">
-                DUPLICATE ROWS
-                </div>
-                <div class="metric-value">
-                {profile["duplicate_rows"]}
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-
-        st.markdown(
-            '<div class="section-title">'
-            '🛡️ System Status'
-            '</div>',
-            unsafe_allow_html=True
+        c1.metric(
+            "Rows",
+            profile["rows"]
         )
 
+        c2.metric(
+            "Columns",
+            profile["columns"]
+        )
+
+        c3.metric(
+            "Missing Values",
+            profile["missing_values"]
+        )
+
+        c4.metric(
+            "Duplicate Rows",
+            profile["duplicate_rows"]
+        )
+
+        st.markdown(
+            "### 🛡️ Safety Status"
+        )
 
         x, y, z = st.columns(3)
-
 
         with x:
 
             if status["status"] == "GOOD":
 
                 st.success(
-                    "✅ Data Quality: GOOD"
+                    "✅ Data Quality GOOD"
                 )
 
             else:
 
                 st.warning(
-                    "⚠️ Data Quality: WARNING"
+                    "⚠️ Data Quality WARNING"
                 )
-
 
         with y:
 
-            currency_result = check_currency_mismatch(
-                [df]
-            )
+            currencies = get_currencies(df)
 
-            if currency_result["mismatch"]:
+            if len(currencies) > 1:
 
                 st.warning(
-                    "⚠️ Currency: MIXED"
+                    "⚠️ Multiple Currencies"
                 )
 
             else:
 
                 st.success(
-                    "✅ Currency: SAFE"
+                    "✅ Currency Safe"
                 )
-
 
         with z:
 
-            if st.session_state.last_result is not None:
+            duplicate_count = detect_duplicates(
+                df
+            )
 
-                st.success(
-                    "✅ Last Result: VERIFIED"
+            if duplicate_count > 0:
+
+                st.warning(
+                    f"⚠️ {duplicate_count} Duplicate Rows"
                 )
 
             else:
 
-                st.info(
-                    "ℹ️ No analysis yet"
+                st.success(
+                    "✅ No Duplicates"
                 )
 
 
-# =========================================================
+# ============================================================
 # DATASET ANALYSIS
-# =========================================================
+# ============================================================
 
 elif page == "📂 Dataset Analysis":
 
@@ -770,13 +964,11 @@ elif page == "📂 Dataset Analysis":
         unsafe_allow_html=True
     )
 
-
     uploaded_file = st.file_uploader(
         "Upload CSV or Excel file",
         type=["csv", "xlsx"],
         key="dataset_upload"
     )
-
 
     if uploaded_file is not None:
 
@@ -785,12 +977,9 @@ elif page == "📂 Dataset Analysis":
             != uploaded_file.name
         ):
 
-            if load_dataset(uploaded_file):
-
-                st.success(
-                    "✅ Dataset uploaded successfully!"
-                )
-
+            load_dataset(
+                uploaded_file
+            )
 
     if st.session_state.df is None:
 
@@ -798,18 +987,13 @@ elif page == "📂 Dataset Analysis":
             "Please upload a dataset first."
         )
 
-
     else:
 
         df = st.session_state.df
 
-
         st.markdown(
             f"### 📄 {st.session_state.file_name}"
         )
-
-
-        # DATA PREVIEW
 
         st.markdown(
             "### 👀 Data Preview"
@@ -821,19 +1005,13 @@ elif page == "📂 Dataset Analysis":
             height=350
         )
 
-
-        # STATISTICS
-
         profile = profile_dataframe(df)
-
 
         st.markdown(
             "### 📊 Dataset Statistics"
         )
 
-
         a, b, c, d = st.columns(4)
-
 
         a.metric(
             "Rows",
@@ -855,69 +1033,90 @@ elif page == "📂 Dataset Analysis":
             profile["duplicate_rows"]
         )
 
-
-        # QUALITY
+        # ----------------------------------------------
+        # MISSING
+        # ----------------------------------------------
 
         st.markdown(
-            "### 🧹 Data Quality"
+            "### 🧹 Missing Data"
         )
 
-
-        quality_report = check_data_quality(
-            df
+        missing = (
+            df.isnull()
+            .sum()
         )
 
+        missing = missing[
+            missing > 0
+        ]
 
-        quality_status = get_quality_status(
-            quality_report
-        )
-
-
-        if quality_status["status"] == "GOOD":
+        if len(missing) == 0:
 
             st.success(
-                "✅ No major data quality problems detected."
+                "✅ No missing values."
             )
 
         else:
 
             st.warning(
-                "⚠️ Data quality problems detected."
+                "⚠️ Missing values detected."
             )
 
-            for problem in quality_status["problems"]:
-
-                st.write(
-                    "• " + problem
+            st.dataframe(
+                missing.rename(
+                    "Missing Values"
                 )
+            )
 
-
-        # CURRENCY
+        # ----------------------------------------------
+        # DUPLICATES
+        # ----------------------------------------------
 
         st.markdown(
-            "### 💰 Currency / Unit Guardian"
+            "### 🔁 Duplicate Rows"
         )
 
-
-        currency_result = check_currency_mismatch(
-            [df]
+        duplicate_count = detect_duplicates(
+            df
         )
 
-
-        if currency_result["mismatch"]:
-
-            st.warning(
-                currency_warning(
-                    currency_result
-                )
-            )
-
-        elif currency_result["has_currency"]:
+        if duplicate_count == 0:
 
             st.success(
-                currency_warning(
-                    currency_result
-                )
+                "✅ No duplicate rows detected."
+            )
+
+        else:
+
+            st.warning(
+                f"⚠️ {duplicate_count} "
+                "duplicate row(s) detected."
+            )
+
+        # ----------------------------------------------
+        # CURRENCY
+        # ----------------------------------------------
+
+        st.markdown(
+            "### 💰 Currency Guardian"
+        )
+
+        currencies = get_currencies(
+            df
+        )
+
+        if len(currencies) > 1:
+
+            st.error(
+                "🚫 Multiple currencies detected: "
+                + ", ".join(currencies)
+            )
+
+        elif len(currencies) == 1:
+
+            st.success(
+                "✅ Currency: "
+                + currencies[0]
             )
 
         else:
@@ -926,10 +1125,40 @@ elif page == "📂 Dataset Analysis":
                 "No currency column detected."
             )
 
+        # ----------------------------------------------
+        # UNITS
+        # ----------------------------------------------
 
-# =========================================================
+        st.markdown(
+            "### 📏 Unit Guardian"
+        )
+
+        units = get_units(df)
+
+        if len(units) > 1:
+
+            st.warning(
+                "⚠️ Multiple units detected: "
+                + ", ".join(units)
+            )
+
+        elif len(units) == 1:
+
+            st.success(
+                "✅ Unit: "
+                + units[0]
+            )
+
+        else:
+
+            st.info(
+                "No unit column detected."
+            )
+
+
+# ============================================================
 # QUESTION ANALYSIS
-# =========================================================
+# ============================================================
 
 elif page == "🔍 Question Analysis":
 
@@ -940,49 +1169,41 @@ elif page == "🔍 Question Analysis":
         unsafe_allow_html=True
     )
 
-
     if st.session_state.df is None:
 
         st.info(
-            "Please upload a dataset from the "
-            "Dashboard or Dataset Analysis page first."
+            "Please upload a dataset first."
         )
-
 
     else:
 
         df = st.session_state.df
-
 
         st.success(
             "Dataset loaded: "
             + st.session_state.file_name
         )
 
-
-        # QUESTION
-
         question = st.text_input(
-            "Ask a question about your dataset",
-            placeholder=
-            "Example: What is the maximum amount in INR?"
+            "Ask a question",
+            placeholder=(
+                "Example: What is the maximum amount in INR?"
+            )
         )
 
-
         if question:
-
-            question_lower = question.lower()
-
-
-            # OPERATION
 
             operation = parse_question(
                 question
             )
 
+            numeric_columns = list(
+                df.select_dtypes(
+                    include="number"
+                ).columns
+            )
 
             a, b = st.columns(2)
-
 
             with a:
 
@@ -992,15 +1213,13 @@ elif page == "🔍 Question Analysis":
                     <div class="metric-title">
                     DETECTED OPERATION
                     </div>
-                    <div class="metric-value"
-                    style="font-size:22px">
+                    <div class="metric-value">
                     {operation.upper()}
                     </div>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-
 
             with b:
 
@@ -1019,212 +1238,362 @@ elif page == "🔍 Question Analysis":
                     unsafe_allow_html=True
                 )
 
-
-            # UNKNOWN OPERATION
-
             if operation == "unknown":
 
-                st.warning(
-                    "⚠️ I could not reliably identify "
-                    "the required operation."
+                st.error(
+                    "🚫 Cannot determine a valid operation."
+                )
+
+                st.info(
+                    "Try asking for total, average, "
+                    "maximum or minimum."
                 )
 
                 st.stop()
-
-
-            # NUMERICAL COLUMNS
-
-            numeric_columns = list(
-                df.select_dtypes(
-                    include="number"
-                ).columns
-            )
-
 
             if not numeric_columns:
 
                 st.error(
-                    "❌ No numerical columns found."
+                    "🚫 No numerical column exists."
                 )
 
                 st.stop()
-
-
-            # COLUMN
 
             column = st.selectbox(
                 "Select numerical column",
                 numeric_columns
             )
 
-
-            # CURRENCY
-
-            currency_result = check_currency_mismatch(
-                [df]
-            )
-
-
-            selected_currency = None
-
-
-            if currency_result["has_currency"]:
-
-                for currency in currency_result["currencies"]:
-
-                    if currency.lower() in question_lower:
-
-                        selected_currency = currency
-
-
-            if selected_currency:
-
-                st.info(
-                    "💰 Currency filter detected: "
-                    + selected_currency
-                )
-
-
-            # ANALYZE
-
             if st.button(
-                "🔎 Analyze & Verify",
+                "🛡️ Analyze, Detect & Verify",
                 use_container_width=True
             ):
 
-                try:
+                # ====================================================
+                # SAFETY CHECK START
+                # ====================================================
 
-                    # -------------------------------------
-                    # WORKING DATA
-                    # -------------------------------------
+                trap_messages = []
 
-                    working_df = df.copy()
+                currencies = get_currencies(
+                    df
+                )
 
+                units = get_units(
+                    df
+                )
 
-                    # -------------------------------------
-                    # CURRENCY FILTER
-                    # -------------------------------------
+                requested_currency = (
+                    find_requested_currency(
+                        question,
+                        currencies
+                    )
+                )
 
-                    if selected_currency:
+                # ====================================================
+                # TRAP 1 — CURRENCY
+                # ====================================================
 
-                        currency_column = None
+                if (
+                    is_financial_question(question)
+                    and len(currencies) > 1
+                    and requested_currency is None
+                ):
 
+                    trap_messages.append(
+                        "💰 Multiple currencies detected: "
+                        + ", ".join(currencies)
+                        + ". The question does not specify "
+                        "which currency should be used."
+                    )
 
-                        for col in working_df.columns:
+                # ====================================================
+                # TRAP 2 — REQUESTED CURRENCY DOES NOT EXIST
+                # ====================================================
 
-                            if col.lower() in [
-                                "currency",
-                                "currencies",
-                                "currency_code"
-                            ]:
+                question_lower = question.lower()
 
-                                currency_column = col
+                currency_words = [
+                    "usd",
+                    "dollar",
+                    "dollars",
+                    "$",
+                    "eur",
+                    "euro",
+                    "euros",
+                    "€",
+                    "inr",
+                    "rupee",
+                    "rupees",
+                    "₹",
+                    "gbp",
+                    "pound",
+                    "pounds",
+                    "£"
+                ]
 
-                                break
+                requested_currency_text = any(
+                    word in question_lower
+                    for word in currency_words
+                )
 
+                if (
+                    requested_currency_text
+                    and requested_currency is None
+                    and len(currencies) > 0
+                ):
 
-                        if currency_column:
+                    trap_messages.append(
+                        "🧠 The question requests a currency "
+                        "that cannot be matched reliably with "
+                        "the dataset."
+                    )
 
-                            working_df = working_df[
-                                working_df[
-                                    currency_column
-                                ]
-                                .astype(str)
-                                .str.upper()
-                                == selected_currency
+                # ====================================================
+                # TRAP 3 — UNIT MISMATCH
+                # ====================================================
+
+                unit_words = [
+                    "kg",
+                    "kilogram",
+                    "kilograms",
+                    "litre",
+                    "liter",
+                    "litres",
+                    "liters",
+                    "meter",
+                    "metre",
+                    "meters",
+                    "metres"
+                ]
+
+                question_has_unit = any(
+                    word in question_lower
+                    for word in unit_words
+                )
+
+                if (
+                    question_has_unit
+                    and len(units) > 1
+                ):
+
+                    trap_messages.append(
+                        "📏 Multiple units detected: "
+                        + ", ".join(units)
+                        + ". Values with different units "
+                        "cannot be directly combined."
+                    )
+
+                # ====================================================
+                # TRAP 4 — AMBIGUOUS DATE
+                # ====================================================
+
+                date_warnings = (
+                    detect_ambiguous_dates(
+                        question,
+                        df
+                    )
+                )
+
+                for warning in date_warnings:
+
+                    trap_messages.append(
+                        "📅 " + warning
+                    )
+
+                # ====================================================
+                # TRAP 5 — DUPLICATES
+                # ====================================================
+
+                duplicate_count = (
+                    detect_duplicates(df)
+                )
+
+                if duplicate_count > 0:
+
+                    trap_messages.append(
+                        f"🔁 {duplicate_count} duplicate "
+                        "row(s) detected. Counting them may "
+                        "double-count the result."
+                    )
+
+                # ====================================================
+                # TRAP 6 — MISSING DATA
+                # ====================================================
+
+                missing_count = (
+                    detect_missing_for_column(
+                        df,
+                        column
+                    )
+                )
+
+                if missing_count > 0:
+
+                    trap_messages.append(
+                        f"❓ Column '{column}' contains "
+                        f"{missing_count} missing value(s). "
+                        "A complete answer cannot be guaranteed."
+                    )
+
+                # ====================================================
+                # TRAP 7 — EMPTY DATA
+                # ====================================================
+
+                if len(df) == 0:
+
+                    trap_messages.append(
+                        "🚫 The dataset contains no records."
+                    )
+
+                # ====================================================
+                # TRAP 8 — INVALID / TRICK QUESTION
+                # ====================================================
+
+                trick_warnings = (
+                    check_trick_question(
+                        question,
+                        df,
+                        requested_currency,
+                        column
+                    )
+                )
+
+                trap_messages.extend(
+                    trick_warnings
+                )
+
+                # ====================================================
+                # DISPLAY TRAPS
+                # ====================================================
+
+                if trap_messages:
+
+                    st.markdown(
+                        """
+                        <div class="refused-card">
+                        <div class="refused-title">
+                        🚫 RESULT REFUSED
+                        </div>
+                        <br>
+                        ProofDataAI detected one or more
+                        reliability traps.
+                        <br><br>
+                        The system will not guess or
+                        provide an unverified answer.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    st.markdown(
+                        "### 🛡️ Safety Checks"
+                    )
+
+                    for message in trap_messages:
+
+                        st.warning(
+                            message
+                        )
+
+                    st.markdown(
+                        "### 💡 Safe Action"
+                    )
+
+                    if (
+                        len(currencies) > 1
+                        and requested_currency is None
+                    ):
+
+                        st.info(
+                            "Specify the required currency. "
+                            "Example: "
+                            "**What is the total amount in INR?**"
+                        )
+
+                    elif duplicate_count > 0:
+
+                        st.info(
+                            "Remove duplicates or specify "
+                            "how duplicate records should "
+                            "be handled."
+                        )
+
+                    elif date_warnings:
+
+                        st.info(
+                            "Clarify whether the date is "
+                            "DD/MM/YYYY or MM/DD/YYYY."
+                        )
+
+                    else:
+
+                        st.info(
+                            "Correct the data or clarify "
+                            "the question before calculation."
+                        )
+
+                    st.stop()
+
+                # ====================================================
+                # SAFE FILTERING
+                # ====================================================
+
+                working_df = df.copy()
+
+                if requested_currency:
+
+                    currency_column = (
+                        find_currency_column(
+                            working_df
+                        )
+                    )
+
+                    if currency_column:
+
+                        working_df = working_df[
+                            working_df[
+                                currency_column
                             ]
-
-
-                    # -------------------------------------
-                    # MIXED CURRENCY REFUSAL
-                    # -------------------------------------
-
-                    elif currency_result["mismatch"]:
-
-                        financial_words = [
-                            "revenue",
-                            "sales",
-                            "price",
-                            "cost",
-                            "profit",
-                            "amount",
-                            "income"
+                            .astype(str)
+                            .str.upper()
+                            ==
+                            requested_currency
+                            .upper()
                         ]
 
+                # ====================================================
+                # TRICK QUESTION — NO MATCHING RECORDS
+                # ====================================================
 
-                        is_financial = any(
-                            word in question_lower
-                            for word in financial_words
-                        )
+                if len(working_df) == 0:
 
+                    st.markdown(
+                        """
+                        <div class="refused-card">
+                        <div class="refused-title">
+                        🚫 NO VALID ANSWER
+                        </div>
+                        <br>
+                        The requested condition produced
+                        zero matching records.
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-                        if is_financial:
+                    st.info(
+                        "ProofDataAI refuses to create "
+                        "an answer from nonexistent data."
+                    )
 
-                            st.session_state.last_result = None
+                    st.stop()
 
+                # ====================================================
+                # CALCULATE
+                # ====================================================
 
-                            st.markdown(
-                                """
-                                <div class="refused-card">
-
-                                <div class="refused-title">
-                                🚫 RESULT REFUSED
-                                </div>
-
-                                <br>
-
-                                Multiple currencies were detected.
-
-                                <br><br>
-
-                                ProofDataAI will not combine
-                                INR, USD and EUR without a
-                                valid conversion rule.
-
-                                <br><br>
-
-                                <b>
-                                Safe action:
-                                specify a currency.
-                                </b>
-
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-
-
-                            st.info(
-                                "Example: "
-                                "What is the total amount in INR?"
-                            )
-
-
-                            st.stop()
-
-
-                    # -------------------------------------
-                    # VALUES
-                    # -------------------------------------
-
-                    values = pd.to_numeric(
-                        working_df[column],
-                        errors="coerce"
-                    ).dropna()
-
-
-                    if len(values) == 0:
-
-                        st.error(
-                            "❌ No valid numerical values found."
-                        )
-
-                        st.stop()
-
-
-                    # -------------------------------------
-                    # PRIMARY CALCULATION
-                    # -------------------------------------
+                try:
 
                     calculated_result = calculate(
                         working_df,
@@ -1232,16 +1601,22 @@ elif page == "🔍 Question Analysis":
                         column
                     )
 
-
-                    # -------------------------------------
+                    # ----------------------------------------------
                     # INDEPENDENT CALCULATION
-                    # -------------------------------------
+                    # ----------------------------------------------
 
                     independent_values = pd.to_numeric(
                         working_df[column],
                         errors="coerce"
                     ).dropna()
 
+                    if len(independent_values) == 0:
+
+                        st.error(
+                            "🚫 No valid numerical values."
+                        )
+
+                        st.stop()
 
                     if operation == "sum":
 
@@ -1249,16 +1624,17 @@ elif page == "🔍 Question Analysis":
                             independent_values.tolist()
                         )
 
-
                     elif operation == "average":
 
                         independent_result = (
                             sum(
                                 independent_values.tolist()
                             )
-                            / len(independent_values)
+                            /
+                            len(
+                                independent_values
+                            )
                         )
-
 
                     elif operation == "max":
 
@@ -1266,168 +1642,99 @@ elif page == "🔍 Question Analysis":
                             independent_values.tolist()
                         )
 
-
                     elif operation == "min":
 
                         independent_result = min(
                             independent_values.tolist()
                         )
 
-
                     else:
 
-                        independent_result = None
+                        st.error(
+                            "🚫 Unsupported operation."
+                        )
 
+                        st.stop()
 
-                    # -------------------------------------
-                    # VERIFICATION
-                    # -------------------------------------
+                    # ====================================================
+                    # VERIFY
+                    # ====================================================
 
                     verification = verify_result(
                         calculated_result,
                         independent_result
                     )
 
-
-                    # =====================================
+                    # ====================================================
                     # VERIFIED
-                    # =====================================
+                    # ====================================================
 
                     if verification["verified"]:
-
 
                         st.session_state.last_result = (
                             calculated_result
                         )
 
-
                         st.session_state.verification = (
                             verification
                         )
 
+                        st.session_state.last_question = (
+                            question
+                        )
 
-                        # ---------------------------------
+                        # ------------------------------------------
                         # PROOF CODE
-                        # ---------------------------------
+                        # ------------------------------------------
 
-                        proof_code = f'''import pandas as pd
-
-df = pd.read_csv(
-    "{st.session_state.file_name}"
-)
-'''
-
-
-                        if selected_currency:
-
-                            proof_code += f'''
-df = df[
-    df["currency"].astype(str).str.upper()
-    == "{selected_currency}"
-]
-'''
-
-
-                        proof_code += f'''
-values = pd.to_numeric(
-    df["{column}"],
-    errors="coerce"
-).dropna()
-'''
-
-
-                        if operation == "sum":
-
-                            proof_code += """
-result = values.sum()
-"""
-
-
-                        elif operation == "average":
-
-                            proof_code += """
-result = values.mean()
-"""
-
-
-                        elif operation == "max":
-
-                            proof_code += """
-result = values.max()
-"""
-
-
-                        elif operation == "min":
-
-                            proof_code += """
-result = values.min()
-"""
-
-
-                        proof_code += """
-
-print(result)
-"""
-
+                        proof_code = build_proof_code(
+                            st.session_state.file_name,
+                            column,
+                            operation,
+                            requested_currency
+                        )
 
                         st.session_state.proof_code = (
                             proof_code
                         )
 
-
-                        # ---------------------------------
+                        # ------------------------------------------
                         # CERTIFICATE
-                        # ---------------------------------
+                        # ------------------------------------------
 
                         certificate = create_certificate(
-
                             question=question,
-
                             result=calculated_result,
-
                             dataset_name=
                             st.session_state.file_name,
-
                             operation=operation,
-
-                            rows_used=len(values),
-
-                            verification_status=
-                            "VERIFIED"
+                            rows_used=len(
+                                independent_values
+                            ),
+                            verification_status="VERIFIED"
                         )
-
 
                         st.session_state.certificate = (
                             certificate
                         )
 
-
-                        # ---------------------------------
-                        # VERIFIED UI
-                        # ---------------------------------
-
                         st.markdown(
                             """
                             <div class="verified-card">
-
                             <div class="verified-title">
                             ✅ RESULT VERIFIED
                             </div>
-
                             <br>
-
+                            All safety checks passed.
+                            <br>
                             Primary calculation and
-                            independent calculation
-                            match successfully.
-
+                            independent calculation match.
                             </div>
                             """,
                             unsafe_allow_html=True
                         )
 
-
                         r1, r2, r3 = st.columns(3)
-
 
                         with r1:
 
@@ -1436,14 +1743,14 @@ print(result)
                                 f"{calculated_result:,.2f}"
                             )
 
-
                         with r2:
 
                             st.metric(
                                 "Rows Used",
-                                len(values)
+                                len(
+                                    independent_values
+                                )
                             )
-
 
                         with r3:
 
@@ -1454,64 +1761,369 @@ print(result)
                                 ]
                             )
 
-
                         st.success(
-                            "🏆 Proof generated successfully!"
+                            "🏆 Proof generated successfully."
                         )
-
-
-                        st.info(
-                            "Go to "
-                            "🏆 Proof & Verification "
-                            "from the sidebar to view "
-                            "the complete proof."
-                        )
-
-
-                    # =====================================
-                    # REJECTED
-                    # =====================================
 
                     else:
 
                         st.session_state.last_result = None
 
-
                         st.markdown(
                             """
                             <div class="refused-card">
-
                             <div class="refused-title">
-                            🚫 RESULT REJECTED
+                            🚫 VERIFICATION FAILED
                             </div>
-
                             <br>
-
-                            Independent verification
-                            failed.
-
+                            The independent calculation
+                            does not match the primary result.
                             <br><br>
-
-                            ProofDataAI will not provide
-                            an unverified numerical answer.
-
+                            ProofDataAI refuses to provide
+                            the answer.
                             </div>
                             """,
                             unsafe_allow_html=True
                         )
 
-
                 except Exception as e:
 
                     st.error(
-                        "❌ Analysis failed: "
+                        "❌ Calculation failed: "
                         + str(e)
                     )
 
 
-# =========================================================
+# ============================================================
+# CONTRADICTION CHECK
+# ============================================================
+
+elif page == "⚠️ Contradiction Check":
+
+    st.markdown(
+        '<div class="section-title">'
+        '⚠️ Contradiction Check'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.write(
+        "Upload two datasets. ProofDataAI compares "
+        "common records and detects conflicting values."
+    )
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.markdown(
+            "### 📄 Dataset 1"
+        )
+
+        file1 = st.file_uploader(
+            "Upload first file",
+            type=["csv", "xlsx"],
+            key="contradiction_file1"
+        )
+
+    with col2:
+
+        st.markdown(
+            "### 📄 Dataset 2"
+        )
+
+        file2 = st.file_uploader(
+            "Upload second file",
+            type=["csv", "xlsx"],
+            key="contradiction_file2"
+        )
+
+    if file1 is None or file2 is None:
+
+        st.info(
+            "Upload both files to perform "
+            "contradiction detection."
+        )
+
+    else:
+
+        try:
+
+            df1 = read_file(file1)
+
+            df2 = read_file(file2)
+
+            st.success(
+                "✅ Both files uploaded successfully."
+            )
+
+            st.markdown(
+                "### 👀 Dataset Preview"
+            )
+
+            c1, c2 = st.columns(2)
+
+            with c1:
+
+                st.write(
+                    "**" + file1.name + "**"
+                )
+
+                st.dataframe(
+                    df1,
+                    use_container_width=True,
+                    height=300
+                )
+
+            with c2:
+
+                st.write(
+                    "**" + file2.name + "**"
+                )
+
+                st.dataframe(
+                    df2,
+                    use_container_width=True,
+                    height=300
+                )
+
+            # ====================================================
+            # FIND COMMON ID
+            # ====================================================
+
+            possible_ids = [
+                "id",
+                "customer_id",
+                "order_id",
+                "product_id",
+                "transaction_id",
+                "employee_id",
+                "user_id"
+            ]
+
+            common_ids = []
+
+            for column in possible_ids:
+
+                if (
+                    column in df1.columns
+                    and
+                    column in df2.columns
+                ):
+
+                    common_ids.append(
+                        column
+                    )
+
+            if not common_ids:
+
+                st.error(
+                    "❌ No common ID column found."
+                )
+
+                st.info(
+                    "Both datasets need a common "
+                    "identifier such as customer_id "
+                    "or order_id."
+                )
+
+            else:
+
+                selected_id = st.selectbox(
+                    "🔑 Select record ID",
+                    common_ids
+                )
+
+                if st.button(
+                    "🔍 Check Contradictions",
+                    use_container_width=True
+                ):
+
+                    contradictions = []
+
+                    ids1 = set(
+                        df1[selected_id]
+                        .dropna()
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    ids2 = set(
+                        df2[selected_id]
+                        .dropna()
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                    common_records = (
+                        ids1.intersection(ids2)
+                    )
+
+                    common_columns = [
+                        column
+                        for column in df1.columns
+                        if column in df2.columns
+                    ]
+
+                    for record_id in common_records:
+
+                        rows1 = df1[
+                            df1[selected_id]
+                            .astype(str)
+                            .str.strip()
+                            ==
+                            record_id
+                        ]
+
+                        rows2 = df2[
+                            df2[selected_id]
+                            .astype(str)
+                            .str.strip()
+                            ==
+                            record_id
+                        ]
+
+                        row1 = rows1.iloc[0]
+
+                        row2 = rows2.iloc[0]
+
+                        for column in common_columns:
+
+                            if column == selected_id:
+
+                                continue
+
+                            value1 = row1[column]
+
+                            value2 = row2[column]
+
+                            if pd.isna(value1):
+
+                                continue
+
+                            if pd.isna(value2):
+
+                                continue
+
+                            value1_text = (
+                                str(value1)
+                                .strip()
+                                .lower()
+                            )
+
+                            value2_text = (
+                                str(value2)
+                                .strip()
+                                .lower()
+                            )
+
+                            if (
+                                value1_text
+                                !=
+                                value2_text
+                            ):
+
+                                contradictions.append(
+                                    {
+                                        "Record ID":
+                                            record_id,
+                                        "Field":
+                                            column,
+                                        file1.name:
+                                            value1,
+                                        file2.name:
+                                            value2
+                                    }
+                                )
+
+                    # ====================================================
+                    # RESULT
+                    # ====================================================
+
+                    if len(contradictions) == 0:
+
+                        st.markdown(
+                            """
+                            <div class="verified-card">
+                            <div class="verified-title">
+                            ✅ NO CONTRADICTIONS FOUND
+                            </div>
+                            <br>
+                            Common records are consistent
+                            across both datasets.
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                    else:
+
+                        st.markdown(
+                            """
+                            <div class="refused-card">
+                            <div class="refused-title">
+                            ❌ CONTRADICTION DETECTED
+                            </div>
+                            <br>
+                            The same record contains
+                            conflicting information.
+                            <br><br>
+                            <b>
+                            ProofDataAI refuses to guess
+                            which source is correct.
+                            </b>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+
+                        result_df = pd.DataFrame(
+                            contradictions
+                        )
+
+                        st.markdown(
+                            "### 🔎 Conflicting Records"
+                        )
+
+                        st.dataframe(
+                            result_df,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                        st.error(
+                            f"🚫 {len(contradictions)} "
+                            "contradiction(s) detected."
+                        )
+
+                        st.markdown(
+                            "### 🧠 System Decision"
+                        )
+
+                        st.write(
+                            "The system will not provide an "
+                            "answer based on conflicting sources."
+                        )
+
+                        st.write(
+                            "**Reason:** "
+                            "The same record has different "
+                            "values in the uploaded datasets."
+                        )
+
+        except Exception as e:
+
+            st.error(
+                "❌ Contradiction checking failed: "
+                + str(e)
+            )
+
+
+# ============================================================
 # PROOF & VERIFICATION
-# =========================================================
+# ============================================================
 
 elif page == "🏆 Proof & Verification":
 
@@ -1522,65 +2134,54 @@ elif page == "🏆 Proof & Verification":
         unsafe_allow_html=True
     )
 
-
     if st.session_state.last_result is None:
 
         st.info(
-            "No verified result available yet."
+            "No verified result available."
         )
-
 
         st.write(
-            "Go to **🔍 Question Analysis**, "
-            "ask a question and click "
-            "**Analyze & Verify**."
+            "Go to **🔍 Question Analysis** "
+            "and perform a verified calculation."
         )
 
-
     else:
-
-        # -----------------------------------------------
-        # VERIFIED RESULT
-        # -----------------------------------------------
 
         st.markdown(
             """
             <div class="verified-card">
-
             <div class="verified-title">
             ✅ VERIFIED RESULT
             </div>
-
             <br>
-
-            The numerical result passed
-            independent verification.
-
+            The answer passed independent verification.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-
         st.markdown(
             "### 📊 Verified Answer"
         )
-
 
         st.metric(
             "Result",
             f"{st.session_state.last_result:,.2f}"
         )
 
+        if st.session_state.last_question:
 
-        # -----------------------------------------------
-        # VERIFICATION DETAILS
-        # -----------------------------------------------
+            st.markdown(
+                "### ❓ Question"
+            )
+
+            st.write(
+                st.session_state.last_question
+            )
 
         st.markdown(
-            "### 🔐 Verification Details"
+            "### 🔐 Verification"
         )
-
 
         if st.session_state.verification:
 
@@ -1588,33 +2189,26 @@ elif page == "🏆 Proof & Verification":
                 st.session_state.verification
             )
 
+            c1, c2 = st.columns(2)
 
-            a, b = st.columns(2)
-
-
-            with a:
+            with c1:
 
                 st.success(
                     "✓ Primary Calculation"
                 )
 
-
-            with b:
+            with c2:
 
                 st.success(
                     "✓ Independent Calculation"
                 )
 
-
             st.write(
-                "**Verification Difference:**",
-                verification["difference"]
+                "**Difference:**",
+                verification[
+                    "difference"
+                ]
             )
-
-
-        # -----------------------------------------------
-        # PROOF CODE
-        # -----------------------------------------------
 
         if st.session_state.proof_code:
 
@@ -1622,16 +2216,10 @@ elif page == "🏆 Proof & Verification":
                 "### 📜 Reproducible Proof Code"
             )
 
-
             st.code(
                 st.session_state.proof_code,
                 language="python"
             )
-
-
-        # -----------------------------------------------
-        # PROOF CERTIFICATE
-        # -----------------------------------------------
 
         if st.session_state.certificate:
 
@@ -1639,15 +2227,14 @@ elif page == "🏆 Proof & Verification":
                 "### 🏆 Proof Certificate"
             )
 
-
             st.json(
                 st.session_state.certificate
             )
 
 
-# =========================================================
+# ============================================================
 # FOOTER
-# =========================================================
+# ============================================================
 
 st.markdown(
     """
